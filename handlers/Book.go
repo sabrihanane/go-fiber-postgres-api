@@ -141,7 +141,7 @@ func DeleteBookAndAssociationsById(c *fiber.Ctx) error {
 	// 3- check if the user confirmed to delete the book and its associations
 	if confirm != "yes" {
 		return c.JSON(fiber.Map{
-			"message":     " When deleting a book it automaticlly deletes associated authors, Are you sure you want to delete all the associations?",
+			"message":     " When deleting a book it automaticlly deletes the relationship with the assigned authors, Are you sure you want to delete all of those relationships?",
 			"confirm_url": c.BaseURL() + c.Path() + "?confirm=yes",
 		})
 	}
@@ -163,7 +163,66 @@ func DeleteBookAndAssociationsById(c *fiber.Ctx) error {
 
 }
 
-// func DeleteBookAndAssociatedAuthorsById(c *fiber.Ctx) error {
+func DeleteBookAndAssociatedAuthorsById(c *fiber.Ctx) error {
+	// 1- get all the parameters
+	var associations []models.BookAuthor
+	book := new(models.Book)
+	id := c.Params("id")          //  required Used to identify specific resources within the API. They are mandatory for the endpoint to make sense and are part of the URL structure.
+	confirm := c.Query("confirm") // used to pass key-value pairs to the server, Typically used for filtering, searching, and modifying the request. They can be optional and do not change the URL structure
+
+	//2- check the existence of the book to be deleted
+	if err := database.DB.Preload("Authors").First(&book, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Book not found",
+		})
+	}
+	fmt.Println("Book = ", book)
+
+	// 3- check if the user confirmed to delete the book and its associations
+	if confirm != "yes" {
+		return c.JSON(fiber.Map{
+			"message":     " When deleting a book it automaticlly deletes associated authors, Are you sure you want to delete all the associations and the associated authors?",
+			"confirm_url": c.BaseURL() + c.Path() + "?confirm=yes",
+		})
+	}
+
+	// Retrieve the book association array from the book/author mapping table
+	if err := database.DB.Where("book_id = ?", id).Find(&associations).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
+	}
+	fmt.Println("Associations = ", associations)
+
+	// Loop through the book associations array
+	for _, association := range associations {
+		var associationCount int64
+		// Retrieve the author associations list and count the number of books associated with each of the authors
+		if err := database.DB.Model(&models.BookAuthor{}).Where("author_id = ?", association.AuthorId).Count(&associationCount).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
+		}
+		fmt.Println("count = ", associationCount)
+
+		// Check if the author has more than one book, if not, delete the author.
+		if associationCount == 1 {
+			if err := database.DB.Delete(&models.Author{}, association.AuthorId).Error; err != nil {
+				return c.Status(fiber.StatusNotFound).JSON(err.Error())
+			}
+		}
+
+		// Delete the association from author/book mapping table
+		if err := database.DB.Where("book_id = ? AND author_id = ?", &association.BookId, &association.AuthorId).Delete(&models.BookAuthor{}).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
+		}
+
+		// Delete the book
+		if err := database.DB.Delete(&book).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
+		}
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"Success": "Book and its associations deleted succefully"})
+}
+
+//func DeleteBookAndAssociatedAuthorsById(c *fiber.Ctx) error {
 // 	// 1- get all the parameters
 // 	book := new(models.Book)
 // 	//author := new(models.Author)
@@ -211,7 +270,7 @@ func DeleteBookAndAssociationsById(c *fiber.Ctx) error {
 // 	// 6- Return deletion confirmation message to the user
 // 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"error": "Book and its associations deleted succefully"})
 
-// }
+//}
 
 func AssignAuthorToBookByIds(c *fiber.Ctx) error {
 	type Request struct {
