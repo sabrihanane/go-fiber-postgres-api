@@ -1,0 +1,284 @@
+package handlers
+
+import (
+	"BookAuthor_ManyToMany/database"
+	"BookAuthor_ManyToMany/dto"
+	"BookAuthor_ManyToMany/models"
+	"BookAuthor_ManyToMany/validators"
+
+	"fmt"
+
+	"strconv"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+func GetBooks(c *fiber.Ctx) error {
+	var books []models.Book
+	database.DB.Preload("Authors").Find(&books)
+	return c.JSON(books)
+}
+
+func GetBookById(c *fiber.Ctx) error {
+	var book models.Book
+	//var bookAuthorNames dto.BookDto
+	id := c.Params("id")
+	bookId, err := strconv.Atoi(id)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid id"})
+	}
+	result := database.DB.Preload("Authors").First(&book, bookId)
+	fmt.Println("Book = ", book)
+
+	if result.Error != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Book not found"})
+	}
+	fmt.Println("Book authors = ", book.Authors)
+
+	// Create the book dto with an empty array of authors iIDs
+	bookAuthorNames := &dto.BookDto{
+		ID:          book.ID,
+		Title:       book.Title,
+		AuthorNames: make([]string, len(book.Authors)),
+	}
+
+	fmt.Println("bookAuthorNames.AuthorNames = ", len(bookAuthorNames.AuthorNames))
+
+	for i, author := range book.Authors {
+		bookAuthorNames.AuthorNames[i] = author.Name
+	}
+	return c.Status(fiber.StatusOK).JSON(bookAuthorNames)
+}
+
+func CreateBook(c *fiber.Ctx) error {
+	book := new(models.Book)
+	if err := c.BodyParser(book); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(err.Error())
+	}
+	// Validate the data
+	if book.Title == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Book title can not be empty!"})
+	}
+	if len(book.Title) < 4 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Book title can not be less than 4 charachters"})
+	}
+	if validators.IsNumeric(book.Title) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Book title can not be numeric"})
+	}
+
+	var bookModel models.Book
+	result := database.DB.Where("title = ?", book.Title).First(&bookModel)
+
+	if result.Error == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "A book with the same title already exists"})
+	}
+
+	database.DB.Create(&book)
+	return c.JSON(book)
+}
+
+func AuthorsOfaSpecificBook(c *fiber.Ctx) error {
+	bookId := c.Params("id")
+
+	var book models.Book
+	var authors []dto.AuthorDto
+
+	if err := database.DB.First(&book, bookId).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Book not found"})
+	}
+
+	if err := database.DB.Model(&book).Select([]string{"id", "name"}).Association("Authors").Find(&authors); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to load Authors"})
+	}
+
+	return c.JSON(authors)
+}
+
+// UpdateBook updates a book in the database by their ID
+func UpdateBook(c *fiber.Ctx) error {
+	book := new(models.Book)
+	if err := c.BodyParser(book); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(err.Error())
+	}
+	result := database.DB.Model(&models.Book{}).Where("id = ?", book.ID).Updates(book)
+	if result.Error != nil {
+		return c.Status(fiber.StatusNotModified).JSON(fiber.Map{"error": "Updating book failed"})
+	}
+	return c.JSON(book)
+}
+
+func DeleteBookById(c *fiber.Ctx) error {
+	book := new(models.Book)
+	id := c.Params("id")
+	if err := database.DB.First(&book, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Book not found",
+		})
+	}
+
+	if err := database.DB.Delete(&book).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to delete book",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "The book has been deleted"})
+}
+
+func DeleteBookAndAssociationsById(c *fiber.Ctx) error {
+	// 1- get all the parameters
+	book := new(models.Book)
+	id := c.Params("id")          //  required Used to identify specific resources within the API. They are mandatory for the endpoint to make sense and are part of the URL structure.
+	confirm := c.Query("confirm") // used to pass key-value pairs to the server, Typically used for filtering, searching, and modifying the request. They can be optional and do not change the URL structure
+
+	// 2- check the existence of the book to be deleted
+	if err := database.DB.Preload("Authors").First(&book, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Book not found",
+		})
+	}
+
+	// 3- check if the user confirmed to delete the book and its associations
+	if confirm != "yes" {
+		return c.JSON(fiber.Map{
+			"message":     " When deleting a book it automaticlly deletes associated authors, Are you sure you want to delete all the associations?",
+			"confirm_url": c.BaseURL() + c.Path() + "?confirm=yes",
+		})
+	}
+
+	// 4- Delete the book associations
+	err := database.DB.Model(&book).Association("Authors").Clear()
+	if err != nil {
+		return c.Status(fiber.StatusNotModified).JSON(fiber.Map{"error": "Failed to delete associated authors"})
+	}
+
+	// 5- Delete the book
+	err1 := database.DB.Delete(&book).Error
+	if err1 != nil {
+		return c.Status(fiber.StatusNotModified).JSON(fiber.Map{"error": "Deleting book failed"})
+	}
+
+	// 6- Return deletion confirmation message to the user
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"error": "Book and its associations deleted succefully"})
+
+}
+
+// func DeleteBookAndAssociatedAuthorsById(c *fiber.Ctx) error {
+// 	// 1- get all the parameters
+// 	book := new(models.Book)
+// 	//author := new(models.Author)
+// 	var authors []models.Author
+// 	id := c.Params("id")          //  required Used to identify specific resources within the API. They are mandatory for the endpoint to make sense and are part of the URL structure.
+// 	confirm := c.Query("confirm") // used to pass key-value pairs to the server, Typically used for filtering, searching, and modifying the request. They can be optional and do not change the URL structure
+
+// 	//2- check the existence of the book to be deleted
+// 	if err := database.DB.Preload("Authors").First(&book, id).Error; err != nil {
+// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+// 			"error": "Book not found",
+// 		})
+// 	}
+
+// 	// 3- check if the user confirmed to delete the book and its associations
+// 	if confirm != "yes" {
+// 		return c.JSON(fiber.Map{
+// 			"message":     " When deleting a book it automaticlly deletes associated authors, Are you sure you want to delete all the associations and the associated authors?",
+// 			"confirm_url": c.BaseURL() + c.Path() + "?confirm=yes",
+// 		})
+// 	}
+
+// 	// 4- Delete the book associations
+// 	err := database.DB.Model(&book).Association("Authors").Find(&authors)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Associations not found"})
+// 	}
+// 	for _, author := range authors {
+// 		if database.DB.Model(&book).Association("Authors").Count() <= 1 {
+// 			err := database.DB.Delete(&author).Error
+// 			if err != nil {
+// 				return c.Status(fiber.StatusNotModified).JSON(fiber.Map{"error": "Deleting associated authors failed"})
+// 			}
+// 		}
+
+// 	}
+
+// 	fmt.Println("author = ", authors)
+// 	//5- Delete the book
+// 	err1 := database.DB.Delete(&book).Error
+// 	if err1 != nil {
+// 		return c.Status(fiber.StatusNotModified).JSON(fiber.Map{"error": "Deletting book failed"})
+// 	}
+
+// 	// 6- Return deletion confirmation message to the user
+// 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"error": "Book and its associations deleted succefully"})
+
+// }
+
+func AssignAuthorToBookByIds(c *fiber.Ctx) error {
+	type Request struct {
+		BookID   uint `json:"book_id"`
+		AuthorID uint `json:"author_id"`
+	}
+
+	var request Request
+
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Cannot parse JSON",
+		})
+	}
+
+	var book models.Book
+	if err := database.DB.First(&book, request.BookID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Book not found",
+		})
+	}
+
+	var author models.Author
+	if err := database.DB.First(&author, request.AuthorID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Author not found",
+		})
+	}
+
+	database.DB.Model(&book).Association("Authors").Append(&author)
+
+	return c.JSON(fiber.Map{
+		"message": "Author assigned to book successfully",
+	})
+}
+
+func UnassignAuthorFromBookByIds(c *fiber.Ctx) error {
+	type Request struct {
+		BookID   uint `json:"book_id"`
+		AuthorID uint `json:"author_id"`
+	}
+
+	var request Request
+
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Cannot parse JSON",
+		})
+	}
+
+	var book models.Book
+	if err := database.DB.First(&book, request.BookID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Book not found",
+		})
+	}
+
+	var author models.Author
+	if err := database.DB.First(&author, request.AuthorID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Author not found",
+		})
+	}
+
+	database.DB.Model(&book).Association("Authors").Delete(&author)
+
+	return c.JSON(fiber.Map{
+		"message": "Author unassigned from book successfully",
+	})
+}
