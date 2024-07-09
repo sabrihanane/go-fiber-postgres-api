@@ -223,7 +223,7 @@ func AssignAuthorToBookByIds(c *fiber.Ctx) error {
 
 	if err := c.BodyParser(&request); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
+			"error": "Cannot parse JSON ",
 		})
 	}
 
