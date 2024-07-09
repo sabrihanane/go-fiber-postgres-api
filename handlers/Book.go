@@ -222,56 +222,6 @@ func DeleteBookAndAssociatedAuthorsById(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"Success": "Book and its associations deleted succefully"})
 }
 
-//func DeleteBookAndAssociatedAuthorsById(c *fiber.Ctx) error {
-// 	// 1- get all the parameters
-// 	book := new(models.Book)
-// 	//author := new(models.Author)
-// 	var authors []models.Author
-// 	id := c.Params("id")          //  required Used to identify specific resources within the API. They are mandatory for the endpoint to make sense and are part of the URL structure.
-// 	confirm := c.Query("confirm") // used to pass key-value pairs to the server, Typically used for filtering, searching, and modifying the request. They can be optional and do not change the URL structure
-
-// 	//2- check the existence of the book to be deleted
-// 	if err := database.DB.Preload("Authors").First(&book, id).Error; err != nil {
-// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-// 			"error": "Book not found",
-// 		})
-// 	}
-
-// 	// 3- check if the user confirmed to delete the book and its associations
-// 	if confirm != "yes" {
-// 		return c.JSON(fiber.Map{
-// 			"message":     " When deleting a book it automaticlly deletes associated authors, Are you sure you want to delete all the associations and the associated authors?",
-// 			"confirm_url": c.BaseURL() + c.Path() + "?confirm=yes",
-// 		})
-// 	}
-
-// 	// 4- Delete the book associations
-// 	err := database.DB.Model(&book).Association("Authors").Find(&authors)
-// 	if err != nil {
-// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Associations not found"})
-// 	}
-// 	for _, author := range authors {
-// 		if database.DB.Model(&book).Association("Authors").Count() <= 1 {
-// 			err := database.DB.Delete(&author).Error
-// 			if err != nil {
-// 				return c.Status(fiber.StatusNotModified).JSON(fiber.Map{"error": "Deleting associated authors failed"})
-// 			}
-// 		}
-
-// 	}
-
-// 	fmt.Println("author = ", authors)
-// 	//5- Delete the book
-// 	err1 := database.DB.Delete(&book).Error
-// 	if err1 != nil {
-// 		return c.Status(fiber.StatusNotModified).JSON(fiber.Map{"error": "Deletting book failed"})
-// 	}
-
-// 	// 6- Return deletion confirmation message to the user
-// 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"error": "Book and its associations deleted succefully"})
-
-//}
-
 func AssignAuthorToBookByIds(c *fiber.Ctx) error {
 	type Request struct {
 		BookID   uint `json:"book_id"`

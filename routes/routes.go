@@ -19,8 +19,10 @@ func Setup(app *fiber.App) {
 	bookGroup.Post("/assign_author_to_book_by_ids", handlers.AssignAuthorToBookByIds)
 	bookGroup.Post("/unassign_author_from_book_by_ids", handlers.UnassignAuthorFromBookByIds)
 
-	athorGroup := app.Group("/author")
-	athorGroup.Get("/get_authors", handlers.GetAuthors)
-	athorGroup.Get("/get_author_by_id/:id", handlers.GetAuthorById)
-	athorGroup.Post("/create_authors", handlers.CreateAuthor)
+	authorGroup := app.Group("/author")
+	authorGroup.Get("/get_authors", handlers.GetAuthors)
+	authorGroup.Get("/get_author_by_id/:id", handlers.GetAuthorById)
+	authorGroup.Post("/create_authors", handlers.CreateAuthor)
+	authorGroup.Put("/update_author", handlers.UpdateAuthor)
+	authorGroup.Delete("delete_author/:id", handlers.DeleteAuthorById)
 }
