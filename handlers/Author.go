@@ -194,5 +194,5 @@ func DeleteAuthorAndAssociatedBooksById(c *fiber.Ctx) error {
 		}
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"Success": "Author and its associations deleted succefully"})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"Success": " and its associations deleted succefully"})
 }
