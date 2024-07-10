@@ -109,11 +109,22 @@ func UpdateBook(c *fiber.Ctx) error {
 
 func DeleteBookById(c *fiber.Ctx) error {
 	book := new(models.Book)
+	association := new(models.BookAuthor)
+	var associationCount int64
+
 	id := c.Params("id")
 	if err := database.DB.First(&book, id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Book not found",
 		})
+	}
+
+	if err := database.DB.Model(&models.BookAuthor{}).Where("author_id = ?", association.AuthorId).Count(&associationCount).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
+	}
+
+	if associationCount > 1 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "This book is associated with authors and can not be deleted "})
 	}
 
 	if err := database.DB.Delete(&book).Error; err != nil {
@@ -199,7 +210,6 @@ func DeleteBookAndAssociatedAuthorsById(c *fiber.Ctx) error {
 		if err := database.DB.Model(&models.BookAuthor{}).Where("author_id = ?", association.AuthorId).Count(&associationCount).Error; err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
 		}
-		fmt.Println("count = ", associationCount)
 
 		// Check if the author has more than one book, if not, delete the author.
 		if associationCount == 1 {
@@ -223,34 +233,39 @@ func DeleteBookAndAssociatedAuthorsById(c *fiber.Ctx) error {
 }
 
 func AssignAuthorToBookByIds(c *fiber.Ctx) error {
-	type Request struct {
-		BookID   uint `json:"book_id"`
-		AuthorID uint `json:"author_id"`
+	bookAuthor := new(models.BookAuthor)
+	if err := c.BodyParser(bookAuthor); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(err.Error())
 	}
 
-	var request Request
+	var associationCount int64
+	if err := database.DB.Model(&models.BookAuthor{}).Where("book_id = ? AND author_id = ?", &bookAuthor.BookId, &bookAuthor.AuthorId).Count(&associationCount).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(err.Error())
+	}
 
-	if err := c.BodyParser(&request); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON ",
+	if associationCount > 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"Message": "This author is already assigned to that specific book",
 		})
 	}
 
 	var book models.Book
-	if err := database.DB.First(&book, request.BookID).Error; err != nil {
+	if err := database.DB.First(&book, bookAuthor.BookId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Book not found",
 		})
 	}
 
 	var author models.Author
-	if err := database.DB.First(&author, request.AuthorID).Error; err != nil {
+	if err := database.DB.First(&author, bookAuthor.AuthorId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Author not found",
 		})
 	}
 
-	database.DB.Model(&book).Association("Authors").Append(&author)
+	if err := database.DB.Model(&book).Association("Authors").Append(&author); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
+	}
 
 	return c.JSON(fiber.Map{
 		"message": "Author assigned to book successfully",
@@ -258,28 +273,32 @@ func AssignAuthorToBookByIds(c *fiber.Ctx) error {
 }
 
 func UnassignAuthorFromBookByIds(c *fiber.Ctx) error {
-	type Request struct {
-		BookID   uint `json:"book_id"`
-		AuthorID uint `json:"author_id"`
+	bookAuthor := new(models.BookAuthor)
+
+	if err := c.BodyParser(&bookAuthor); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(err.Error())
 	}
 
-	var request Request
+	var associationCount int64
+	if err := database.DB.Model(&models.BookAuthor{}).Where("book_id = ? AND author_id = ?", &bookAuthor.BookId, &bookAuthor.AuthorId).Count(&associationCount).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(err.Error())
+	}
 
-	if err := c.BodyParser(&request); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cannot parse JSON",
+	if associationCount < 1 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"Message": "This author is not assigned to this book",
 		})
 	}
 
 	var book models.Book
-	if err := database.DB.First(&book, request.BookID).Error; err != nil {
+	if err := database.DB.First(&book, bookAuthor.BookId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Book not found",
 		})
 	}
 
 	var author models.Author
-	if err := database.DB.First(&author, request.AuthorID).Error; err != nil {
+	if err := database.DB.First(&author, bookAuthor.AuthorId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Author not found",
 		})
