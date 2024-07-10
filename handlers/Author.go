@@ -91,12 +91,17 @@ func UpdateAuthor(c *fiber.Ctx) error {
 func DeleteAuthorById(c *fiber.Ctx) error {
 	author := new(models.Author)
 	id := c.Params("id")
+	var associationCount int64
 	if err := database.DB.First(&author, id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Author not found",
 		})
 	}
 
+	associationCount = database.DB.Model(&author).Association("Books").Count()
+	if associationCount >= 1 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "This author is associated with books and can not be deleted "})
+	}
 	if err := database.DB.Delete(&author).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to delete author",

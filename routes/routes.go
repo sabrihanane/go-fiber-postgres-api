@@ -25,4 +25,6 @@ func Setup(app *fiber.App) {
 	authorGroup.Post("/create_authors", handlers.CreateAuthor)
 	authorGroup.Put("/update_author", handlers.UpdateAuthor)
 	authorGroup.Delete("delete_author/:id", handlers.DeleteAuthorById)
+	authorGroup.Delete("delete_author_and_associations_by_id/:id", handlers.DeleteAuthorAndAssociationsById)
+	authorGroup.Delete("delete_author_and_associated_books_by_id/:id", handlers.DeleteAuthorAndAssociatedBooksById)
 }

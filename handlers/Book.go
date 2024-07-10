@@ -109,7 +109,6 @@ func UpdateBook(c *fiber.Ctx) error {
 
 func DeleteBookById(c *fiber.Ctx) error {
 	book := new(models.Book)
-	association := new(models.BookAuthor)
 	var associationCount int64
 
 	id := c.Params("id")
@@ -119,12 +118,10 @@ func DeleteBookById(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := database.DB.Model(&models.BookAuthor{}).Where("author_id = ?", association.AuthorId).Count(&associationCount).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(err.Error())
-	}
+	associationCount = database.DB.Model(&book).Association("Authors").Count()
 
-	if associationCount > 1 {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "This book is associated with authors and can not be deleted "})
+	if associationCount >= 1 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "This book is associated with authors and can not be deleted "})
 	}
 
 	if err := database.DB.Delete(&book).Error; err != nil {
