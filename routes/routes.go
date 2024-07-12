@@ -2,12 +2,16 @@ package routes
 
 import (
 	"BookAuthor_ManyToMany/handlers"
+	"BookAuthor_ManyToMany/middleware"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 func Setup(app *fiber.App) {
-	bookGroup := app.Group("/book")
+	userGroup := app.Group("/user")
+	userGroup.Get("/login", handlers.LogIn)
+
+	bookGroup := app.Group("/book", middleware.JWTProtected())
 	bookGroup.Get("/get_books", handlers.GetBooks)
 	bookGroup.Get("/get_book_by_id/:id", handlers.GetBookById)
 	bookGroup.Get("/get_book_authors_by_id/:id", handlers.AuthorsOfaSpecificBook)
